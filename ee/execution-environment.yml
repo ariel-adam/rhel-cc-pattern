@@ -1,0 +1,28 @@
+---
+# Custom Execution Environment for rhel-cc-pattern
+# Pre-built: ghcr.io/ariel-adam/rhel-cc-pattern-ee:latest
+# Contains: az CLI 2.86.0 + fedora.linux_system_roles + ansible.posix
+#
+# To rebuild:
+#   ansible-builder build --file ee/execution-environment.yml \
+#     --tag ghcr.io/ariel-adam/rhel-cc-pattern-ee:latest
+#   podman push ghcr.io/ariel-adam/rhel-cc-pattern-ee:latest
+
+version: 3
+
+images:
+  base_image:
+    name: quay.io/ansible/awx-ee:latest
+
+dependencies:
+  galaxy:
+    collections:
+      - name: fedora.linux_system_roles
+      - name: ansible.posix
+
+additional_build_steps:
+  append_final:
+    - RUN rpm --import https://packages.microsoft.com/keys/microsoft.asc
+    - RUN curl -sL https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm -o /tmp/ms.rpm && dnf install -y /tmp/ms.rpm && rm /tmp/ms.rpm
+    - RUN dnf install -y azure-cli && dnf clean all
+    - RUN az --version 2>&1 | head -1

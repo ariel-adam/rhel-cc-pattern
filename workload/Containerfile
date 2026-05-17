@@ -1,0 +1,11 @@
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+
+RUN microdnf install -y python3 && microdnf clean all
+
+WORKDIR /app
+COPY server.py .
+
+EXPOSE 8888
+ENV PORT=8888 VM_TYPE=standard POLICY=none
+
+ENTRYPOINT ["python3", "server.py"]
