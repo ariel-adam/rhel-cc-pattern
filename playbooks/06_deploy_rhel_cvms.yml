@@ -1,0 +1,176 @@
+---
+# Phase 6: Deploy trustee_client + hello-cc workload on both RHEL CVMs
+# Uses: fedora.linux_system_roles.trustee_client
+# Also builds trustee-attester v0.19.0 from source (RHEL RPM v0.10.0 incompatible with KBS 1.1)
+- name: Deploy Trustee Client and workloads on RHEL CVMs
+  hosts: rhel_cvms
+  become: true
+  gather_facts: true
+  vars:
+    trustee_attester_version: "v0.19.0"
+    trustee_attester_binary: "/usr/local/bin/trustee-attester-v0.19"
+
+  pre_tasks:
+    - name: Install required packages
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - gcc
+          - gcc-c++
+          - make
+          - openssl-devel
+          - pkg-config
+          - perl
+          - tpm2-tss-devel
+          - tpm2-tss
+          - curl
+        state: present
+
+    - name: Verify AMD SEV-SNP hardware is present
+      ansible.builtin.command: dmesg | grep -i "sev-snp\|confidential virtualization"
+      register: cc_hw_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: Print hardware CC status
+      ansible.builtin.debug:
+        msg: "{{ 'AMD SEV-SNP confirmed ✓' if cc_hw_check.rc == 0 else 'WARNING: SEV-SNP not detected' }}"
+
+    - name: Check if compatible trustee-attester is already installed
+      ansible.builtin.stat:
+        path: "{{ trustee_attester_binary }}"
+      register: attester_stat
+
+    - name: Install Rust toolchain
+      ansible.builtin.shell: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+      args:
+        creates: "/home/azureuser/.cargo/bin/rustc"
+      become: false
+      when: not attester_stat.stat.exists
+
+    - name: Download guest-components source
+      ansible.builtin.get_url:
+        url: "https://github.com/confidential-containers/guest-components/archive/refs/tags/{{ trustee_attester_version }}.tar.gz"
+        dest: "/tmp/gc-src.tar.gz"
+        mode: '0644'
+      become: false
+      when: not attester_stat.stat.exists
+
+    - name: Download vendor tarball (offline Rust dependencies)
+      ansible.builtin.get_url:
+        url: "https://github.com/confidential-containers/guest-components/releases/download/{{ trustee_attester_version }}/guest-components-{{ trustee_attester_version }}-vendor.tar.gz"
+        dest: "/tmp/gc-vendor.tar.gz"
+        mode: '0644'
+      become: false
+      when: not attester_stat.stat.exists
+
+    - name: Extract source and vendor
+      ansible.builtin.shell: |
+        cd /tmp && tar xzf gc-src.tar.gz && tar xzf gc-vendor.tar.gz
+      args:
+        creates: "/tmp/guest-components-0.19.0"
+      become: false
+      when: not attester_stat.stat.exists
+
+    - name: Configure offline vendor path
+      ansible.builtin.copy:
+        dest: "/tmp/guest-components-0.19.0/.cargo/config.toml"
+        content: |
+          [source.crates-io]
+          replace-with = "vendored-sources"
+          [source.vendored-sources]
+          directory = "/tmp/vendor"
+        mode: '0644'
+      become: false
+      when: not attester_stat.stat.exists
+
+    - name: Build trustee-attester v0.19.0 with Azure SNP vTPM support
+      ansible.builtin.shell: |
+        source ~/.cargo/env
+        cd /tmp/guest-components-0.19.0
+        cargo build --release --offline \
+          --manifest-path attestation-agent/kbs_protocol/Cargo.toml \
+          --bin trustee-attester \
+          --features "bin,az-snp-vtpm-attester"
+      args:
+        executable: /bin/bash
+        creates: "/tmp/guest-components-0.19.0/target/release/trustee-attester"
+      become: false
+      when: not attester_stat.stat.exists
+
+    - name: Install trustee-attester binary
+      ansible.builtin.copy:
+        src: "/tmp/guest-components-0.19.0/target/release/trustee-attester"
+        dest: "{{ trustee_attester_binary }}"
+        mode: '0755'
+        remote_src: true
+      when: not attester_stat.stat.exists
+
+    - name: Copy KBS CA cert to VM
+      ansible.builtin.copy:
+        content: "{{ kbs_ca_cert }}"
+        dest: "/home/azureuser/kbs-ca.crt"
+        owner: azureuser
+        mode: '0644'
+
+  roles:
+    - role: fedora.linux_system_roles.trustee_client
+
+  post_tasks:
+    - name: Deploy hello-cc Quadlet
+      ansible.builtin.copy:
+        dest: /etc/containers/systemd/hello-cc.container
+        content: |
+          [Unit]
+          Description=hello-cc ({{ inventory_hostname }})
+          After=network.target
+
+          [Container]
+          Image=ghcr.io/ariel-adam/hello-cc:latest
+          Network=host
+          Environment=VM_TYPE={{ inventory_hostname }}
+          Environment=POLICY={{ kbs_policy_id | default('unknown') }}
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd and start hello-cc
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Start hello-cc
+      ansible.builtin.systemd:
+        name: hello-cc
+        state: started
+        enabled: true
+
+    - name: Open port 8888 in firewalld
+      ansible.posix.firewalld:
+        port: 8888/tcp
+        permanent: true
+        state: enabled
+        immediate: true
+
+    - name: Run attestation test
+      ansible.builtin.command: >
+        {{ trustee_attester_binary }}
+        --url https://{{ attestation_server_ip }}:8080
+        --cert-file /home/azureuser/kbs-ca.crt
+        get-resource --path default/kbsres1/key3
+      register: attest_result
+      become: false
+      ignore_errors: true
+      changed_when: false
+
+    - name: Print attestation result
+      ansible.builtin.debug:
+        msg:
+          - "VM: {{ inventory_hostname }}"
+          - "AMD SEV-SNP: {{ 'confirmed ✓' if cc_hw_check.rc == 0 else 'not detected' }}"
+          - "Attestation: {{ 'SUCCESS — secret delivered ✓' if attest_result.rc == 0 else 'FAILED — ' + (attest_result.stderr | default(''))[:100] }}"
+          - "URL: http://{{ ansible_host }}:8888"

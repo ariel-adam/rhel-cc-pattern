@@ -1,0 +1,5 @@
+---
+trustee_server_trustee: true
+trustee_server_secret_registration_enabled: true
+trustee_server_secret_registration_listen_port: 8081
+trustee_server_secure_logging: false

@@ -1,0 +1,8 @@
+---
+# Relaxed attestation policy — no hardware check (for testing CDH)
+trustee_client_trustee_gc: true
+trustee_client_kbs_url: "https://{{ attestation_server_ip }}:8080"
+trustee_client_kbs_cert_content: "{{ kbs_ca_cert }}"
+trustee_client_secret_registration_enabled: false
+trustee_client_secure_logging: false
+kbs_policy_id: "insecure"

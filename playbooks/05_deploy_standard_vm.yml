@@ -1,0 +1,71 @@
+---
+# Phase 5: Deploy hello-cc workload on standard-vm (no CC, no trustee)
+- name: Deploy workloads on standard-vm (baseline — no confidential computing)
+  hosts: standard_vms
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Install Podman
+      ansible.builtin.dnf:
+        name: podman
+        state: present
+
+    - name: Create quadlet directory
+      ansible.builtin.file:
+        path: /etc/containers/systemd
+        state: directory
+        mode: '0755'
+
+    - name: Deploy hello-cc Quadlet (standard-vm — no CC)
+      ansible.builtin.copy:
+        dest: /etc/containers/systemd/hello-cc.container
+        content: |
+          [Unit]
+          Description=hello-cc (standard-vm — no CC)
+          After=network.target
+
+          [Container]
+          Image=ghcr.io/ariel-adam/hello-cc:latest
+          Network=host
+          Environment=VM_TYPE=standard-vm
+          Environment=POLICY=none
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd and start hello-cc
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Start hello-cc
+      ansible.builtin.systemd:
+        name: hello-cc
+        state: started
+        enabled: true
+
+    - name: Open port 8888 in firewalld
+      ansible.posix.firewalld:
+        port: 8888/tcp
+        permanent: true
+        state: enabled
+        immediate: true
+
+    - name: Verify hello-cc responds
+      ansible.builtin.uri:
+        url: "http://localhost:8888"
+        status_code: 200
+      retries: 10
+      delay: 5
+      register: hello_check
+
+    - name: Print status
+      ansible.builtin.debug:
+        msg:
+          - "hello-cc: HTTP {{ hello_check.status }} ✓"
+          - "URL: http://{{ ansible_host }}:8888"
+          - "This VM has NO confidential computing protection"

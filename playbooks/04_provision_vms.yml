@@ -1,0 +1,87 @@
+---
+# Phase 4: Provision standard-vm and both RHEL CVMs using az CLI
+# CVMs use --security-type ConfidentialVM for AMD SEV-SNP
+- name: Provision standard-vm and RHEL CVMs
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    resource_group: "{{ resource_group | default('rhel-cc-pattern-rg') }}"
+
+  tasks:
+    - name: Create standard-vm (Standard_D4s_v3, no CC)
+      ansible.builtin.command: >
+        az vm create
+        --resource-group {{ resource_group }}
+        --name standard-vm
+        --image RedHat:RHEL:9-lvm-gen2:latest
+        --size Standard_D4s_v3
+        --admin-username azureuser
+        --ssh-key-values "{{ vm_ssh_pubkey }}"
+        --os-disk-size-gb 64
+        --output json
+      register: std_vm
+      failed_when: std_vm.rc != 0
+      changed_when: "'publicIpAddress' in std_vm.stdout"
+
+    - name: Create rhel-cvm-secure (Standard_DC2as_v5, AMD SEV-SNP, strict policy)
+      ansible.builtin.command: >
+        az vm create
+        --resource-group {{ resource_group }}
+        --name rhel-cvm-secure
+        --image RedHat:rhel-cvm:9_6_cvm:latest
+        --size Standard_DC2as_v5
+        --admin-username azureuser
+        --ssh-key-values "{{ vm_ssh_pubkey }}"
+        --os-disk-size-gb 64
+        --security-type ConfidentialVM
+        --os-disk-security-encryption-type VMGuestStateOnly
+        --output json
+      register: cvm_secure
+      failed_when: cvm_secure.rc != 0
+      changed_when: "'publicIpAddress' in cvm_secure.stdout"
+
+    - name: Create rhel-cvm-insecure (Standard_DC2as_v5, AMD SEV-SNP, relaxed policy)
+      ansible.builtin.command: >
+        az vm create
+        --resource-group {{ resource_group }}
+        --name rhel-cvm-insecure
+        --image RedHat:rhel-cvm:9_6_cvm:latest
+        --size Standard_DC2as_v5
+        --admin-username azureuser
+        --ssh-key-values "{{ vm_ssh_pubkey }}"
+        --os-disk-size-gb 64
+        --security-type ConfidentialVM
+        --os-disk-security-encryption-type VMGuestStateOnly
+        --output json
+      register: cvm_insecure
+      failed_when: cvm_insecure.rc != 0
+      changed_when: "'publicIpAddress' in cvm_insecure.stdout"
+
+    - name: Open port 8888 on workload VMs
+      ansible.builtin.command: >
+        az vm open-port
+        --resource-group {{ resource_group }}
+        --name {{ item }}
+        --port 8888
+        --priority 900
+        --output table
+      loop:
+        - standard-vm
+        - rhel-cvm-secure
+        - rhel-cvm-insecure
+      changed_when: false
+
+    - name: Show all VM IPs
+      ansible.builtin.command: >
+        az vm list
+        --resource-group {{ resource_group }}
+        --show-details
+        --query "[].{name:name, ip:publicIps, state:powerState}"
+        --output table
+      register: vm_list
+      changed_when: false
+
+    - name: Print VM list
+      ansible.builtin.debug:
+        msg: "{{ vm_list.stdout_lines }}"

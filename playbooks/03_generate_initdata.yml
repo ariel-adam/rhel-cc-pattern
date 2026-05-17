@@ -1,0 +1,95 @@
+---
+# Phase 3: Generate initdata.toml from KBS cert + auto-update AAP inventory
+# Runs after KBS is up (phase 2), before CVMs are created (phase 4)
+- name: Generate initdata and update AAP inventory with KBS details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    kbs_port: 8080
+    initdata_path: "/tmp/rhel-cc-pattern-initdata.toml"
+    aap_url: "{{ aap_controller_url | default('https://localhost') }}"
+    aap_username: "{{ aap_admin_user | default('admin') }}"
+    aap_password: "{{ aap_admin_password | default('') }}"
+    aap_inventory_id: "{{ aap_inventory_id_num | default('2') }}"
+
+  tasks:
+    - name: Use KBS CA cert from inventory variables
+      ansible.builtin.set_fact:
+        kbs_cert: "{{ kbs_ca_cert }}"
+
+    - name: Set KBS URL
+      ansible.builtin.set_fact:
+        kbs_url: "https://{{ attestation_server_ip | default(hostvars['attestation-server'].ansible_host) }}:{{ kbs_port }}"
+
+    - name: Generate initdata.toml
+      ansible.builtin.copy:
+        dest: "{{ initdata_path }}"
+        content: |
+          algorithm = "sha384"
+          version = "0.1.0"
+
+          [kbc]
+          name = "cc_kbc"
+          url = "{{ kbs_url }}"
+          kbs_cert = """{{ kbs_cert }}
+          """
+        mode: '0600'
+
+    - name: Compute SHA-256 of initdata.toml
+      ansible.builtin.command: "sha256sum {{ initdata_path }}"
+      register: initdata_hash_result
+      changed_when: false
+
+    - name: Store initdata hash
+      ansible.builtin.set_fact:
+        initdata_hash: "{{ initdata_hash_result.stdout.split()[0] }}"
+
+    - name: Print initdata details
+      ansible.builtin.debug:
+        msg:
+          - "KBS URL: {{ kbs_url }}"
+          - "initdata SHA-256: {{ initdata_hash }}"
+
+    - name: Get current AAP inventory variables
+      ansible.builtin.uri:
+        url: "{{ aap_url }}/api/controller/v2/inventories/{{ aap_inventory_id }}/"
+        method: GET
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: current_inv
+      ignore_errors: true
+      when: aap_password != ''
+
+    - name: Update AAP inventory with KBS cert, URL and initdata hash
+      ansible.builtin.uri:
+        url: "{{ aap_url }}/api/controller/v2/inventories/{{ aap_inventory_id }}/"
+        method: PATCH
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          variables: "{{ (current_inv.json.variables | default('{}') | from_json) | combine({
+            'kbs_url': kbs_url,
+            'kbs_ca_cert': kbs_cert,
+            'attestation_server_ip': attestation_server_ip | default(hostvars['attestation-server'].ansible_host),
+            'initdata_hash': initdata_hash
+          }) | to_nice_json }}"
+      ignore_errors: true
+      when: aap_password != '' and current_inv is not failed
+
+    - name: Store demo secrets in KBS
+      ansible.builtin.command: >
+        curl -sk -X POST {{ kbs_url }}/kbs/v0/resource/default/kbsres1/{{ item.key }}
+        -H "Content-Type: application/json"
+        -d "{\"data\": \"{{ item.value | b64encode }}\"}"
+      loop:
+        - { key: "key1", value: "secret-value-key1" }
+        - { key: "key2", value: "secret-value-key2" }
+        - { key: "key3", value: "secret-value-key3" }
+      changed_when: false
+      ignore_errors: true

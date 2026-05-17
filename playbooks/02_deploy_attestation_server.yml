@@ -1,0 +1,29 @@
+---
+# Phase 2: Deploy Trustee Server components on attestation-server
+# Uses: fedora.linux_system_roles.trustee_server
+- name: Deploy Trustee Server (KBS + AS + RVPS)
+  hosts: attestation_servers
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Wait for RHUI repos to be available
+      ansible.builtin.dnf:
+        name: python3
+        state: present
+      retries: 5
+      delay: 10
+
+  roles:
+    - role: fedora.linux_system_roles.trustee_server
+
+  post_tasks:
+    - name: Verify KBS is responding
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 8080
+        timeout: 60
+
+    - name: Confirm KBS is up
+      ansible.builtin.debug:
+        msg: "KBS deployed on {{ inventory_hostname }} — port 8080 open"

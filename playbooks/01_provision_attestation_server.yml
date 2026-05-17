@@ -1,0 +1,68 @@
+---
+# Phase 1: Provision the attestation-server VM on Azure using az CLI
+# Runs in the rhel-cc-pattern-ee container which has az CLI installed
+- name: Provision attestation-server VM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    resource_group: "{{ resource_group | default('rhel-cc-pattern-rg') }}"
+    location: "{{ location | default('eastus') }}"
+
+  tasks:
+    - name: Ensure resource group exists
+      ansible.builtin.command: >
+        az group create
+        --name {{ resource_group }}
+        --location {{ location }}
+        --output table
+      changed_when: false
+
+    - name: Create attestation-server VM (Standard_D4s_v3)
+      ansible.builtin.command: >
+        az vm create
+        --resource-group {{ resource_group }}
+        --name attestation-server
+        --image RedHat:RHEL:9-lvm-gen2:latest
+        --size Standard_D4s_v3
+        --admin-username azureuser
+        --ssh-key-values "{{ vm_ssh_pubkey }}"
+        --os-disk-size-gb 64
+        --output json
+      register: vm_result
+      failed_when: vm_result.rc != 0
+      changed_when: "'publicIpAddress' in vm_result.stdout"
+
+    - name: Open KBS ports 8080 and 8081
+      ansible.builtin.command: >
+        az vm open-port
+        --resource-group {{ resource_group }}
+        --name attestation-server
+        --port {{ item.port }}
+        --priority {{ item.priority }}
+        --output table
+      loop:
+        - { port: "8080", priority: 900 }
+        - { port: "8081", priority: 901 }
+      changed_when: false
+
+    - name: Get attestation-server public IP
+      ansible.builtin.command: >
+        az vm show
+        --resource-group {{ resource_group }}
+        --name attestation-server
+        --show-details
+        --query publicIps
+        --output tsv
+      register: ip_result
+      changed_when: false
+
+    - name: Wait for SSH
+      ansible.builtin.wait_for:
+        host: "{{ ip_result.stdout | trim }}"
+        port: 22
+        timeout: 120
+
+    - name: Print attestation-server IP
+      ansible.builtin.debug:
+        msg: "attestation-server IP: {{ ip_result.stdout | trim }}"
