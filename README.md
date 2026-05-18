@@ -31,6 +31,20 @@ That's it. The script handles everything else.
 
 ---
 
+## Demo
+
+[![Demo: RHEL Confidential Computing Pattern — block diagram, system roles, and live attestation on 3 VMs](https://asciinema.org/a/0JuQDRqzL8NbpwwT.svg)](https://asciinema.org/a/0JuQDRqzL8NbpwwT)
+
+*2m 54s — shows the architecture, RHEL System Roles, and live attestation flow across
+one standard VM (denied) and two AMD SEV-SNP Confidential VMs (secret delivered).*
+
+To re-record on your own deployment:
+```bash
+bash scripts/record-demo.sh
+```
+
+---
+
 ## What It Deploys
 
 Four Azure VMs, three running the same workload (`hello-cc`) to show the
