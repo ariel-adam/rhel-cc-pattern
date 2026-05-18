@@ -1,3 +1,40 @@
+# ── Secrets — NEVER commit these ─────────────────────────────────────────────
+*vault*.yml
+*secret*.yml
+*.env
+*.env.*
+
+# SSH keys and TLS certificates
+*.pem
+*.key
+*.crt
+*.cer
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+pull-secret*
+kbs-ca*
+
+# Static inventory with real IPs (use hosts.ini for placeholder template)
+inventory/hosts.local.ini
+inventory/hosts.local*
+
+# initdata with real KBS URL/cert
+initdata.toml
+*initdata*.toml
+
+# ── Build artifacts ───────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+context/             # ansible-builder build context
 ee/context/
+
+# ── Demo recordings (local only — GIF is committed in docs/) ─────────────────
 demo.cast
 *.cast
+
+# ── Local overrides ───────────────────────────────────────────────────────────
+*.local
+*.override
+.env.local

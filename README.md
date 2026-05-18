@@ -33,10 +33,12 @@ That's it. The script handles everything else.
 
 ## Demo
 
-[![Demo: RHEL Confidential Computing Pattern — block diagram, system roles, and live attestation on 3 VMs](https://asciinema.org/a/0JuQDRqzL8NbpwwT.svg)](https://asciinema.org/a/0JuQDRqzL8NbpwwT)
+![Demo: block diagram, RHEL System Roles, and live attestation on 3 VMs](docs/demo.gif)
 
-*2m 54s — shows the architecture, RHEL System Roles, and live attestation flow across
-one standard VM (denied) and two AMD SEV-SNP Confidential VMs (secret delivered).*
+*2m 54s at 3× speed — architecture overview, RHEL System Roles, and live attestation
+flow: standard VM (denied) vs two AMD SEV-SNP CVMs (secret delivered).*
+
+▶ Watch at full speed: [asciinema.org/a/0JuQDRqzL8NbpwwT](https://asciinema.org/a/0JuQDRqzL8NbpwwT)
 
 To re-record on your own deployment:
 ```bash
