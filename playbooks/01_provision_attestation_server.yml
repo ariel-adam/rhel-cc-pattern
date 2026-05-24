@@ -6,8 +6,8 @@
   connection: local
   gather_facts: false
   vars:
-    resource_group: "{{ resource_group | default('rhel-cc-pattern-rg') }}"
-    location: "{{ location | default('eastus') }}"
+    resource_group: "rhel-cc-pattern-rg"
+    location: "eastus"
 
   tasks:
     - name: Ensure resource group exists

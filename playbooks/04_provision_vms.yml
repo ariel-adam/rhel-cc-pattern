@@ -6,7 +6,7 @@
   connection: local
   gather_facts: false
   vars:
-    resource_group: "{{ resource_group | default('rhel-cc-pattern-rg') }}"
+    resource_group: "rhel-cc-pattern-rg"
 
   tasks:
     - name: Create standard-vm (Standard_D4s_v3, no CC)
