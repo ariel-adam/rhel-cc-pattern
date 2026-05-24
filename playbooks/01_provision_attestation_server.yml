@@ -10,6 +10,16 @@
     location: "eastus"
 
   tasks:
+    - name: Login to Azure with service principal
+      ansible.builtin.command: >
+        az login --service-principal
+        --username "{{ lookup('env','AZURE_CLIENT_ID') }}"
+        --password "{{ lookup('env','AZURE_CLIENT_SECRET') }}"
+        --tenant "{{ lookup('env','AZURE_TENANT_ID') }}"
+        --output table
+      changed_when: false
+      no_log: true
+
     - name: Ensure resource group exists
       ansible.builtin.command: >
         az group create
