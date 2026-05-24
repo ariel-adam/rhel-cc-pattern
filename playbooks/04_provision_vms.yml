@@ -45,7 +45,9 @@
         --ssh-key-values "{{ vm_ssh_pubkey }}"
         --os-disk-size-gb 64
         --security-type ConfidentialVM
-        --os-disk-security-encryption-type VMGuestStateOnly
+        --os-disk-security-encryption-type VMGuestStateOnly \
+        --enable-vtpm true \
+        --enable-secure-boot true
         --output json
       register: cvm_secure
       failed_when: cvm_secure.rc != 0
@@ -62,7 +64,9 @@
         --ssh-key-values "{{ vm_ssh_pubkey }}"
         --os-disk-size-gb 64
         --security-type ConfidentialVM
-        --os-disk-security-encryption-type VMGuestStateOnly
+        --os-disk-security-encryption-type VMGuestStateOnly \
+        --enable-vtpm true \
+        --enable-secure-boot true
         --output json
       register: cvm_insecure
       failed_when: cvm_insecure.rc != 0
